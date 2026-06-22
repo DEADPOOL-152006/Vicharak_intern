@@ -2,6 +2,14 @@
 
 This project implements a hybrid hardware-software system using an **RP2040 Microcontroller** and a **Shrike-Lite FPGA**. It acts as a "Smart Keyboard" that intercepts misspelled words, corrects them in real-time using a frequency dictionary, processes the data through custom FPGA silicon via SPI, and types the corrected sentence directly into your PC using a custom Python HID Background Interface.
 
+## 🧗 Difficulty Level: Advanced
+This is a multidisciplinary engineering project that bridges three distinct domains. It requires patience and a willingness to debug across software and silicon boundaries.
+* **PC Software (Advanced):** Requires understanding of OS-level keyboard hooks, multi-threading, and serial port management in Python.
+* **Embedded Software (Moderate):** Requires understanding of MicroPython, SPI Master protocols, and strict RAM management / garbage collection (the RP2040 has only 264KB of RAM for the dictionary).
+* **Digital Logic / FPGA (Advanced):** Requires understanding of Verilog, RTL synthesis, SPI Target implementations, and nanosecond clock domain crossing / synchronization.
+
+---
+
 ## 🏗️ The Architecture Pipeline
 
 This system uses an asymmetrical processing architecture where the PC, the microcontroller, and the FPGA do exactly what they are best at.
