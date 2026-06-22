@@ -1,18 +1,24 @@
 # ⚡ Hardware-Accelerated Smart Spell-Checking Keyboard
 
-This project implements a hybrid hardware-software system using an **RP2040 Microcontroller** and a **Shrike-Lite FPGA**. It acts as a "Smart Keyboard" that intercepts misspelled words, corrects them in real-time using a frequency dictionary, processes the data through custom FPGA silicon via SPI, and types the corrected sentence directly into your PC as a USB HID device.
+This project implements a hybrid hardware-software system using an **RP2040 Microcontroller** and a **Shrike-Lite FPGA**. It acts as a "Smart Keyboard" that intercepts misspelled words, corrects them in real-time using a frequency dictionary, processes the data through custom FPGA silicon via SPI, and types the corrected sentence directly into your PC using a custom Python HID Background Interface.
 
 ## 🏗️ The Architecture Pipeline
 
-This system uses an asymmetrical processing architecture where the microcontroller and the FPGA do exactly what they are best at.
+This system uses an asymmetrical processing architecture where the PC, the microcontroller, and the FPGA do exactly what they are best at.
 
-### 1. The Brain: RP2040 (MicroPython / CircuitPython)
+### 1. The Bridge: Python PC Companion Script (HID Interface)
+The Python script running on the host PC is the critical bridge between the hardware and the Operating System. 
+* **OS-Level Interception:** It uses a background keyboard hook to silently track user keystrokes globally, completely independent of the active application.
+* **Fast-Typing Buffer:** It utilizes a threaded lock to memorize keys pressed *while* waiting for the hardware processing to finish. This ensures fast typists do not lose their flow or have their current word overwritten.
+* **Dynamic Injection:** It calculates the exact length of the typo, fires a precise barrage of `Backspace` commands to clear the error, and injects the FPGA-corrected word directly into the active window.
+* **Context-Aware:** Features auto-launching capabilities and application-specific overrides (like injecting `ESC` to cancel Chrome's Omnibox autocomplete before correcting).
+
+### 2. The Brain: RP2040 (MicroPython)
 The RP2040 acts as the **SPI Master** and high-level system coordinator. 
-* **Spell Checking Engine:** It loads a 512-word frequency dictionary (`top512.txt`) and runs an edit-distance algorithm to find the most probable correct spelling of a mistyped word.
+* **Spell Checking Engine:** It loads a highly optimized 1,000-word frequency dictionary (`top1000.txt`) into its RAM and runs an edit-distance algorithm to find the most probable correct spelling of a mistyped word.
 * **Hardware Coordinator:** It chunks the corrected string into individual bytes, manages the Chip Select (`CS`) line, and pumps the SPI Clock to communicate with the FPGA.
-* **USB HID Interface:** Once the hardware processing is complete, the RP2040 acts as a physical USB keyboard, typing the final corrected output directly into the host PC's active text editor.
 
-### 2. The Muscle: Shrike-Lite FPGA (Verilog)
+### 3. The Muscle: Shrike-Lite FPGA (Verilog)
 The Shrike-Lite FPGA acts as the **SPI Target** and low-level hardware pipeline.
 * **Hardware Echo & Pipelining:** Currently, the FPGA receives the corrected bytes from the RP2040, registers them into its internal flip-flops, and echoes the final result back across the MISO line on the very next SPI transaction. 
 * **Nanosecond Synchronization:** The FPGA operates on a strict 50MHz internal clock. The Verilog logic utilizes a 3-stage synchronizer to catch the RP2040's `CS` drop and align the incoming 100kHz SPI clock to its internal domains.
@@ -38,12 +44,12 @@ To replicate this project, you must ensure a **shared Ground (GND)** between the
 
 ## 🚀 How It Works (The Data Flow)
 
-1. **Input:** The user types a misspelled string (e.g., `"teh"`).
-2. **Software Correction:** The RP2040 algorithm detects the error, checks the frequency dictionary, and corrects `"teh"` to `"the"`.
+1. **Input:** The user types a misspelled string (e.g., `"teh"`). The Python PC Script intercepts it in the background the moment the Spacebar is pressed.
+2. **Software Correction:** The PC passes the string to the RP2040 via serial. The RP2040 detects the error, checks the frequency dictionary, and corrects `"teh"` to `"the"`.
 3. **SPI Transmission:** The RP2040 wraps the string in `\x00` dummy bytes (to flush the hardware pipeline) and sends it over MOSI to the FPGA.
 4. **Hardware Synchronization:** A deliberate `5µs` micro-delay in the RP2040 code allows the FPGA's 50MHz clock to register the Chip Select drop before the data transmission begins, preventing dropped bits.
-5. **Hardware Echo:** The FPGA registers the bytes and streams the final result back to the RP2040 over MISO.
-6. **HID Output:** The RP2040 emulates a USB keyboard and types the final FPGA output directly into Notepad, Word, or any active window on the host PC.
+5. **Hardware Echo:** The FPGA registers the bytes and streams the final result back to the RP2040 over MISO, which is immediately forwarded back to the PC script.
+6. **HID Output:** The Python PC script calculates the typo length, rapidly sends `Backspace` commands to delete the error, and dynamically types the corrected string seamlessly into the user's active application.
 
 ---
 
@@ -56,15 +62,16 @@ To replicate this project, you must ensure a **shared Ground (GND)** between the
 4. Synthesize and flash the bitstream to the Shrike-Lite.
 
 ### RP2040 Setup
-1. Flash your RP2040 with **CircuitPython** (recommended for native USB HID support) or use MicroPython with the PC Companion script.
-2. Upload `code.py` to the root of your microcontroller.
-3. Upload the `top512.txt` dictionary file to the root of your microcontroller.
+1. Flash your RP2040 with standard MicroPython.
+2. Ensure your Python script is named exactly `main.py` and upload it to the root of your microcontroller (this ensures it auto-boots native logic).
+3. Upload the `top1000.txt` dictionary file to the root of your microcontroller.
 
 ### Running the System
 1. Plug both devices in and ensure the SPI jumper wires are connected.
-2. Run `code.py`.
-3. Follow the terminal prompts to type a misspelled word, then quickly click your mouse into a text editor.
-4. Watch the hardware type out your corrected sentence!
+2. Close all IDEs (like Thonny) to free up the COM port.
+3. Run the PC Companion Python script as an Administrator on your host machine.
+4. Select your target application (Notepad, Chrome, etc.) from the terminal menu. 
+5. Start typing and watch the hardware magically fix your spelling in real-time!
 
 ---
 *Built with Python, Verilog, and a lot of debugging over serial ports.*
